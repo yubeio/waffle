@@ -46,6 +46,10 @@ defmodule Waffle.Storage.S3 do
   uploader definition file like this:
 
       def bucket, do: :some_custom_bucket_name
+      
+  You also can get bucket information from file or scope when to already storaded files (url and delete)
+
+      def bucket({_file, scope}), do: scope.bucket || bucket()
 
   ## Access Control Permissions
 
@@ -135,7 +139,7 @@ defmodule Waffle.Storage.S3 do
 
   def put(definition, version, {file, scope}) do
     destination_dir = definition.storage_dir(version, {file, scope})
-    s3_bucket = s3_bucket(definition)
+    s3_bucket = s3_bucket(definition, {file, scope})
     s3_key = Path.join(destination_dir, file.file_name)
     acl = definition.acl(version, {file, scope})
 
@@ -155,7 +159,7 @@ defmodule Waffle.Storage.S3 do
   end
 
   def delete(definition, version, {file, scope}) do
-    s3_bucket(definition)
+    s3_bucket(definition, {file, scope})
     |> ExAws.S3.delete_object(s3_key(definition, version, {file, scope}))
     |> ExAws.request()
 
@@ -211,7 +215,7 @@ defmodule Waffle.Storage.S3 do
     options = put_in options[:virtual_host], virtual_host()
     config = ExAws.Config.new(:s3, Application.get_all_env(:ex_aws))
     s3_key = s3_key(definition, version, file_and_scope)
-    s3_bucket = s3_bucket(definition)
+    s3_bucket = s3_bucket(definition, file_and_scope)
     {:ok, url} = ExAws.S3.presigned_url(config, :get, s3_bucket, s3_key, options)
     url
   end
@@ -249,10 +253,12 @@ defmodule Waffle.Storage.S3 do
     Application.get_env(:waffle, :virtual_host) || false
   end
 
-  defp s3_bucket(definition) do
-    case definition.bucket() do
-      {:system, env_var} when is_binary(env_var) -> System.get_env(env_var)
-      name -> name
-    end
+  defp s3_bucket(definition), do: definition.bucket() |> parse_bucket()
+
+  defp s3_bucket(definition, file_and_scope) do
+    definition.bucket(file_and_scope) |> parse_bucket()
   end
+
+  defp parse_bucket({:system, env_var}) when is_binary(env_var), do: System.get_env(env_var)
+  defp parse_bucket(name), do: name
 end
